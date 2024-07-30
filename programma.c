@@ -15,6 +15,7 @@
 
 int t_corriere, c_corriere, time = 0;
 
+
 unsigned int hash(const char* str) {
     unsigned int hash = 5381;
     int c;
@@ -39,6 +40,7 @@ typedef struct ingrediente_s {
 } ingrediente;
 typedef struct {
     char nome[DIM_CHAR];
+    int peso;
     ingrediente *ingredienti;
 } ricetta;
 typedef struct {
@@ -60,6 +62,11 @@ typedef struct {
     scorta **el;
 } inventario;
 
+ilist_t * head_cucina = NULL;
+ilist_t * head_corriere = NULL;
+tabella_ricette * tab_ricette = NULL;
+inventario * tab_inventario = NULL;
+
 inventario *crea_inventario() {
     int a = TABELLLA_MAGAZZINO_SIZE;
     inventario* tab = malloc(sizeof(inventario));
@@ -68,14 +75,16 @@ inventario *crea_inventario() {
 }
 
 lotto * clean_lotto(lotto * h) {
+    lotto * tmp;
     if (h == NULL) return h;
     
-    while(h->next != NULL && h->scadenza <= time) { // TODO: CHECK TIME =
+    while(h->next != NULL && h->scadenza <= time) { 
+        tmp = h;
         h = h->next;
-        free(h);
+        free(tmp);
     }
 
-    if (h->next == NULL && h->scadenza <= time) { // TODO: ^ here too
+    if (h->next == NULL && h->scadenza <= time) {
         free(h);
         return NULL;
     }
@@ -160,7 +169,7 @@ tabella_ricette *crea_tabella_ricette() {
 
 ingrediente * aggiungi_ingrediente(ingrediente * h, char * nome, int quantita) {
     ingrediente *new;
-    if ((new = (ingrediente*) malloc(sizeof(ingrediente)))) {
+    if ((new = (ingrediente*) malloc(sizeof(ingrediente))) != NULL) {
         new->quantita = quantita;
         strcpy(new->nome, nome);
         new->next = h;
@@ -171,7 +180,7 @@ ingrediente * aggiungi_ingrediente(ingrediente * h, char * nome, int quantita) {
     return h;
 }
 
-void inserisci_ricetta(tabella_ricette * tab, char * key, ingrediente * ingredienti) {
+void inserisci_ricetta(tabella_ricette * tab, char * key, ingrediente * ingredienti, int peso) {
     int index = hash(key);
     ricetta* el = tab->el[index];
     int i = 1;
@@ -184,6 +193,7 @@ void inserisci_ricetta(tabella_ricette * tab, char * key, ingrediente * ingredie
     el = malloc(sizeof(ricetta));
     strcpy(el->nome, key);
     el->ingredienti = ingredienti;
+    el->peso = peso;
     tab->el[index] = el;
 }
 
@@ -225,17 +235,16 @@ void cancella_ricetta(tabella_ricette * tab, char * key) {
 }
 
 
-// metti in coda 
-ilist_t * append(ilist_t * h, int ora, int quantita, char nome[], int peso) {
+ilist_t * append(ilist_t *h, int ora, int quantita, char nome[], int peso) {
 	ilist_t * new, * el;
-	if((new = (ilist_t *)malloc(sizeof(ilist_t)))) {
+	if((new = (ilist_t *) malloc(sizeof(ilist_t))) != NULL) {
 		new->ora = ora;
         new->quantita= quantita;
         strcpy(new->nome, nome);
 		new->next = NULL;
         new->peso = peso;
 		
-		if(!h) 
+		if(h == NULL) 
 			h = new;
 		else {
 			el = h;
@@ -244,46 +253,17 @@ ilist_t * append(ilist_t * h, int ora, int quantita, char nome[], int peso) {
 			el->next = new;
 		} 
         return h;
-	} else printf("append: errore allocazione memoria");
+	} 
+    printf("append: errore allocazione memoria - 2 \n");
     return NULL;
 }
 
-
 // rimuovi un elemento dalla coda
-ilist_t * pop(ilist_t * h, int ora) {
-    ilist_t *curr = h;
-    ilist_t *prev = NULL;
-
-    while (curr != NULL) {
-        if (curr->ora == ora) {
-            if (prev == NULL) 
-                h = curr->next;
-            else 
-                prev->next = curr->next;
-            
-            free(curr);
-            return h; 
-        }
-        prev = curr;
-        curr = curr->next;
-    }
-    printf("ERROR remove: ora %d non trovata\n", ora);
-    return h;
-}
-
-// aggiungi un elemneto nella testa della coda
-ilist_t * push(ilist_t * h, int ora, int quantita, char nome[], int peso) {
-    ilist_t *new;
-    if ((new = (ilist_t*) malloc(sizeof(ilist_t)))) {
-        new->ora = ora;
-        new->quantita = quantita;
-        strcpy(new->nome, nome);
-        new->next = h;
-        new->peso = peso;
-        h = new;
-    } else {
-        printf("push: errore allocazione memoria");
-    }
+ilist_t * pop(ilist_t * h) {
+    ilist_t *tmp = h;
+    h = h->next;
+    free(tmp);
+    
     return h;
 }
 
@@ -297,14 +277,6 @@ int find(ilist_t * h, char nome[]) {
     }
     return 0;
 }
-
-ilist_t * head_cucina = NULL;
-ilist_t * head_corriere = NULL;
-tabella_ricette * tab_ricette = NULL;
-inventario * tab_inventario = NULL;
-
-
-
 
 int isCommand(char * cmd) {
     if (strcmp(cmd, CMD_AGGIUNGI_RICETTA) == 0) return 1;
@@ -324,11 +296,13 @@ void aggiungi_ricetta() {
     char nome[DIM_CHAR];
     int c;
     int quantita;
+    int peso = 0;
     ingrediente * h = NULL;
     if (scanf("%s", v) == 0) printf("ERROR");
     ricetta * el = cerca_ricetta(tab_ricette, v);
 
     if(scanf("%s %d", nome, &quantita) == 0) printf("ERROR");
+    peso += quantita;
     if (el == NULL) {
         h = aggiungi_ingrediente(NULL, nome, quantita);
     }
@@ -337,12 +311,13 @@ void aggiungi_ricetta() {
         if (c == '\n' || c == EOF) break;
         ungetc(c, stdin);
         if(scanf("%s %d", nome, &quantita) == 0) printf("ERROR");
+        peso += quantita;
         if (el == NULL) {
             h = aggiungi_ingrediente(NULL, nome, quantita);
         }
     }
-    if (el== NULL) {
-        inserisci_ricetta(tab_ricette, v, h);
+    if (el == NULL) {
+        inserisci_ricetta(tab_ricette, v, h, peso);
         printf("aggiunta\n");
     }
     else 
@@ -362,8 +337,8 @@ void rimuovi_ricetta(char * nome_ricetta){
         return;
     }
     int trovato = find(head_cucina, nome_ricetta);
-    if(trovato == 1) {
-        printf("ordini in sospeso");
+    if (trovato == 1) {
+        printf("ordini in sospeso\n");
         return;
     }
 
@@ -379,12 +354,12 @@ int verifica_magazzino(inventario * inv, tabella_ricette* tab, char * key, int n
     ricetta * ricetta = cerca_ricetta(tab, key);
     int count;
     
-    if (ricetta == NULL) return 0; // Non c'è la ricetta
+    if (ricetta == NULL) return -1; // Non c'è la ricetta
 
     tmp = ricetta->ingredienti;
     while(tmp != NULL) {
         el = cerca_scorta(inv, tmp->nome);
-        if (el == NULL || el->lotto == NULL) return 1; // Non c'è l'ingrediente, metti in coda
+        if (el == NULL || el->lotto == NULL) return 0; // Non c'è l'ingrediente, metti in coda
         clean_lotto(el->lotto);
         count = 0;
         info = el->lotto;
@@ -397,7 +372,7 @@ int verifica_magazzino(inventario * inv, tabella_ricette* tab, char * key, int n
         tmp = tmp->next;
     }
 
-    return 2; // ci sono abbastanza ingredienti
+    return ricetta->peso; // ci sono abbastanza ingredienti
 }
 
 void processa_ordine(inventario * inv, tabella_ricette* tab, char * key, int num) {
@@ -433,6 +408,28 @@ void processa_ordine(inventario * inv, tabella_ricette* tab, char * key, int num
     }
 }
 
+void verifica_attesa(ilist_t * h){
+    ilist_t * curr, *prev = NULL, *tmp = NULL;
+    int result = 0;
+    curr = h;
+    while(curr != NULL) {
+        result = verifica_magazzino(tab_inventario, tab_ricette, curr->nome, curr->quantita);
+        if (result > 0)  {
+            processa_ordine(tab_inventario, tab_ricette, curr->nome, curr->quantita);
+            head_corriere = append(head_corriere, curr->ora, curr->quantita, curr->nome, result);
+            if (prev == NULL) h = curr->next;
+            else {
+                prev->next = curr->next;
+            }
+            tmp = curr;
+            curr = curr->next;
+            free(tmp);
+        } else {
+            prev = curr;
+            curr = curr->next;
+        }
+    }
+}
 
 
 void ordine(char * dolce, int quantita) {
@@ -444,15 +441,16 @@ void ordine(char * dolce, int quantita) {
             RIFIUTATO (se non c'è nella lista delle ricette)
     */
     int result = verifica_magazzino(tab_inventario, tab_ricette, dolce, quantita);
-    if (result == 0) printf("rifiutato\n");
-    else if (result == 1) {
-        // append(head_cucina, time, quantita, dolce, ); // MANCA PESO
-    } else if (result == 2) {
-        processa_ordine(tab_inventario, tab_ricette, dolce, quantita);
-        // append(head_corriere, time, quantita, dolce, ); // MANCA PESO
-    } else {
-        printf("ERROR - ordine");
+    if (result == -1) {
+        printf("rifiutato\n");
+        return;
     }
+    else if (result == 0) {
+        head_cucina = append(head_cucina, time, quantita, dolce, 1); 
+    } else {
+        processa_ordine(tab_inventario, tab_ricette, dolce, quantita);
+        head_corriere = append(head_corriere ,time, quantita, dolce, result);
+    } 
     
     printf("accettato\n");
 }
@@ -476,10 +474,10 @@ void rifornimento() {
     }
 
     printf("rifornito\n");
-    // TODO: verifica se è possibile prepare qualcosa dalla lista di attesa alla preparazione
+    verifica_attesa(head_cucina);
 }
 
-void corriere(ilist_t * coda) {
+ilist_t * corriere(ilist_t * coda) {
     int count = 0;
     int tmp = 0;
     /* 
@@ -493,11 +491,13 @@ void corriere(ilist_t * coda) {
             tmp = (coda->peso) * (coda->quantita);
             printf("%d %s %d\n", coda->ora, coda->nome, coda->quantita);
             count += tmp;
-            coda = pop(coda, coda->ora);
+            // coda = pop(coda);
+            
         } else 
             break;
     }
     if (count == 0) printf("camioncino vuoto\n");
+    return coda;
 }
 
 
@@ -516,7 +516,7 @@ int main(int argc, char *argv[]) {
     
     read = scanf("%s", v);
     while(read && read != EOF) {
-        if (time != 0 && time % t_corriere == 0) corriere(head_corriere);
+        if (time % t_corriere == 0 && time != 0) head_corriere = corriere(head_corriere);
         action = isCommand(v);
         if (action == 1) {
             aggiungi_ricetta();
@@ -535,6 +535,5 @@ int main(int argc, char *argv[]) {
         time++;
         read = scanf("%s", v);
     }
-
     return 0;
 };
