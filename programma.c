@@ -401,8 +401,39 @@ int verifica_magazzino(inventario * inv, tabella_ricette* tab, char * key, int n
 }
 
 void processa_ordine(inventario * inv, tabella_ricette* tab, char * key, int num) {
+    ingrediente * tmp;
+    scorta * el;
+    lotto * info;
+    ricetta * ricetta = cerca_ricetta(tab, key);
+    int count, richiesti;
+
     
+    if (ricetta == NULL) {
+        printf("THERE WAS AN ERROR");
+        return;
+    }
+
+    tmp = ricetta->ingredienti;
+    while(tmp != NULL) {
+        el = cerca_scorta(inv, tmp->nome);
+        count = 0;
+        info = el->lotto;
+        while(info != NULL && count < (tmp->quantita * num)) {
+            richiesti = (tmp->quantita * num) - count;
+            if (info->quantita <=  richiesti) {
+                count += info->quantita;
+                el->lotto = info->next;
+                free(info);
+                info = el->lotto;
+            } else {
+                info->quantita = (info->quantita * num) - count;
+            }
+        }
+        tmp = tmp->next;
+    }
 }
+
+
 
 void ordine(char * dolce, int quantita) {
     // prende gli ingredienti dal magazzino in ordine di scadenza
@@ -415,9 +446,10 @@ void ordine(char * dolce, int quantita) {
     int result = verifica_magazzino(tab_inventario, tab_ricette, dolce, quantita);
     if (result == 0) printf("rifiutato\n");
     else if (result == 1) {
-
+        // append(head_cucina, time, quantita, dolce, ); // MANCA PESO
     } else if (result == 2) {
-
+        processa_ordine(tab_inventario, tab_ricette, dolce, quantita);
+        // append(head_corriere, time, quantita, dolce, ); // MANCA PESO
     } else {
         printf("ERROR - ordine");
     }
