@@ -33,7 +33,7 @@ typedef struct coda_s {
     int quantita;
     int peso;
     struct coda_s *next;
-} ilist_t;
+} list;
 
 // Struttura per Ricettario
 typedef struct ingrediente_s {
@@ -65,68 +65,68 @@ typedef struct {
     scorta **el;
 } inventario;
 
-ilist_t * head_cucina = NULL;
-ilist_t * head_corriere = NULL;
+list * head_cucina = NULL;
+list * head_corriere = NULL;
 tabella_ricette * tab_ricette = NULL;
 inventario * tab_inventario = NULL;
 
 
-void print_ingrediente(ingrediente *ing) {
-    int i = 1;
-    while (ing != NULL) {
-        printf("  Ingrediente %d: %s, Quantita: %d\n", i++, ing->nome, ing->quantita);
-        ing = ing->next;
-    }
-}
+// void print_ingrediente(ingrediente *ing) {
+//     int i = 1;
+//     while (ing != NULL) {
+//         printf("  Ingrediente %d: %s, Quantita: %d\n", i++, ing->nome, ing->quantita);
+//         ing = ing->next;
+//     }
+// }
 
-void print_ricetta(ricetta *r) {
-    if (r != NULL) {
-        printf("Ricetta: %s, Peso: %d\n", r->nome, r->peso);
-        printf("Ingredienti:\n");
-        if (r->ingredienti != NULL) {
-            print_ingrediente(r->ingredienti);
-        } else {
-            printf("  No ingredienti\n");
-        }
-    }
-}
+// void print_ricetta(ricetta *r) {
+//     if (r != NULL) {
+//         printf("Ricetta: %s, Peso: %d\n", r->nome, r->peso);
+//         printf("Ingredienti:\n");
+//         if (r->ingredienti != NULL) {
+//             print_ingrediente(r->ingredienti);
+//         } else {
+//             printf("  No ingredienti\n");
+//         }
+//     }
+// }
 
-void print_tabella_ricette(tabella_ricette *tab) {
-    for (int i = 0; i < HASH_TABLE; i++) {
-        if (tab->el[i] != NULL) {
-            printf("Ricetta %d:\n", i + 1);
-            print_ricetta(tab->el[i]);
-        }
-    }
-}
+// void print_tabella_ricette(tabella_ricette *tab) {
+//     for (int i = 0; i < HASH_TABLE; i++) {
+//         if (tab->el[i] != NULL) {
+//             printf("Ricetta %d:\n", i + 1);
+//             print_ricetta(tab->el[i]);
+//         }
+//     }
+// }
 
-void print_lotto(lotto *l) {
-    int i = 1;
-    while (l != NULL) {
-        printf("  Lotto %d: Quantita: %d, Scadenza: %d\n", i++, l->quantita, l->scadenza);
-        l = l->next;
-    }
-}
+// void print_lotto(lotto *l) {
+//     int i = 1;
+//     while (l != NULL) {
+//         printf("  Lotto %d: Quantita: %d, Scadenza: %d\n", i++, l->quantita, l->scadenza);
+//         l = l->next;
+//     }
+// }
 
-void print_scorta(scorta *s) {
-    if (s != NULL) {
-        printf("Scorta: %s\n", s->nome);
-        if (s->lotto != NULL) {
-            print_lotto(s->lotto);
-        } else {
-            printf("  No lotto\n");
-        }
-    }
-}
+// void print_scorta(scorta *s) {
+//     if (s != NULL) {
+//         printf("Scorta: %s\n", s->nome);
+//         if (s->lotto != NULL) {
+//             print_lotto(s->lotto);
+//         } else {
+//             printf("  No lotto\n");
+//         }
+//     }
+// }
 
-void print_inventario(inventario *inv) {
-    for (int i = 0; i < HASH_TABLE; i++) {
-        if (inv->el[i] != NULL) {
-            printf("Scorta %d:\n", i + 1);
-            print_scorta(inv->el[i]);
-        }
-    }
-}
+// void print_inventario(inventario *inv) {
+//     for (int i = 0; i < HASH_TABLE; i++) {
+//         if (inv->el[i] != NULL) {
+//             printf("Scorta %d:\n", i + 1);
+//             print_scorta(inv->el[i]);
+//         }
+//     }
+// }
 
 
 // funzione per inizializzare la tabella hash
@@ -266,6 +266,123 @@ ricetta * cerca_ricetta(char * key) {
     return el;
 }
 
+list * append(list *h, int ora, int quantita, char * nome, int peso) {
+	list * new, * el;
+	if((new = (list *) malloc(sizeof(list))) != NULL) {
+		new->ora = ora;
+        new->quantita= quantita;
+        strcpy(new->nome, nome);
+		new->next = NULL;
+        new->peso = peso;
+		
+		if (h == NULL) h = new;
+		else {
+			el = h;
+			while(el->next) 
+				el = el->next;
+			el->next = new;
+		} 
+        return h;
+	} 
+    printf("append: errore allocazione memoria - 2 \n");
+    return NULL;
+}
+
+// rimuovi un elemento dalla coda
+list * pop(list * h) {
+    list *tmp = h;
+    h = h->next;
+    free(tmp);
+    
+    return h;
+}
+
+list * find(list * h, char nome[]) {
+    list *tmp;
+    tmp = h;
+    while(tmp != NULL) {
+        if (strcmp(tmp->nome, nome) == 0) return tmp;
+        tmp = tmp->next;
+    }
+    return NULL;
+}
+
+// lotto * clean_lotto(lotto * h) {
+//     lotto * tmp;
+//     if (h == NULL) return h;
+    
+//     while(h->next != NULL && h->scadenza <= time) { 
+//         tmp = h;
+//         h = h->next;
+//         free(tmp);
+//     }
+
+//     if (h->next == NULL && h->scadenza <= time) {
+//         free(h);
+//         return NULL;
+//     }
+//     return h;
+// }
+
+int verifica_magazzino(char * key, int num) {
+    ingrediente * tmp;
+    scorta * el;
+    lotto * info;
+    ricetta * ricetta = cerca_ricetta(key);
+    int count;
+    
+    if (ricetta == NULL) return -1; // Non c'è la ricetta
+
+    tmp = ricetta->ingredienti;
+    while(tmp != NULL) {
+        el = cerca_scorta(tmp->nome);
+        if (el == NULL || el->lotto == NULL) return 0; // Non c'è l'ingrediente, metti in coda
+        count = 0;
+        info = el->lotto;
+        while(info != NULL && count < (tmp->quantita * num)) {
+            count += info->quantita;
+            info = info->next;
+        }
+
+        if (count < (tmp->quantita * num)) return 1;
+        tmp = tmp->next;
+    }
+
+    return ricetta->peso; // ci sono abbastanza ingredienti
+}
+
+void processa_ordine(char * key, int num) {
+    ingrediente * tmp;
+    scorta * el;
+    lotto * info;
+    ricetta * ricetta = cerca_ricetta(key);
+    int count, richiesti;
+    
+    if (ricetta == NULL) {
+        printf("THERE WAS AN ERROR");
+        return;
+    }
+
+    tmp = ricetta->ingredienti;
+    while(tmp != NULL) {
+        el = cerca_scorta(tmp->nome);
+        count = 0;
+        info = el->lotto;
+        while(info != NULL && count < (tmp->quantita * num)) {
+            richiesti = (tmp->quantita * num) - count;
+            if (info->quantita <=  richiesti) {
+                count += info->quantita;
+                el->lotto = info->next;
+                free(info);
+                info = el->lotto;
+            } else {
+                info->quantita = (info->quantita * num) - count;
+            }
+        }
+        tmp = tmp->next;
+    }
+}
+
 // Rimuovi una ricetta dalla tabella hash => per evitare collisioni viene sovrascritta e liberato spazio
 void cancella_ricetta(ricetta * el) {
     if (el != NULL) {
@@ -290,7 +407,7 @@ void aggiungi_ricetta() {
     */    
     char v[DIM_CHAR];
     char nome[DIM_CHAR];
-    int c;
+    char c;
     int quantita;
     int peso = 0;
     
@@ -298,16 +415,14 @@ void aggiungi_ricetta() {
     if (scanf("%s", v) == 0) printf("ERROR");
     ricetta * el = cerca_ricetta(v);
 
-    if(scanf("%s %d", nome, &quantita) == 0) printf("ERROR");
+    if(scanf("%s %d%c", nome, &quantita, &c) == 0) printf("ERROR");
     peso += quantita;
     if (el == NULL) {
         h = aggiungi_ingrediente(NULL, nome, quantita);
     }
     while(1) {
-        c = getchar();  
         if (c == '\n' || c == EOF) break;
-        ungetc(c, stdin);
-        if(scanf("%s %d", nome, &quantita) == 0) printf("ERROR");
+        if(scanf("%s %d%c", nome, &quantita, &c) == 0) printf("ERROR");
         peso += quantita;
         // Se non si tratta di una ricetta già esistente, di cui ingoreremmo la registrazione, aggiungi alla lista
         if (el == NULL) {
@@ -354,7 +469,18 @@ void ordine(char * dolce, int quantita) {
             ACCETTATO
             RIFIUTATO (se non c'è nella lista delle ricette)
     */
-    
+    // int result;
+    verifica_magazzino(dolce, quantita);
+    // if (result == -1) {
+    //     printf("rifiutato\n");
+    //     return;
+    // }
+    // if (result == 0) {
+    //     head_cucina = append(head_corriere, time, quantita, dolce, 0);
+    // } else {
+    //     processa_ordine(dolce, quantita);
+    //     head_corriere = append(head_corriere, time, quantita, dolce, result);
+    // }
     printf("accettato\n");
 }
 
@@ -364,19 +490,20 @@ void rifornimento() {
             RIFORNITO
     */
     char v[DIM_CHAR];
+    char c;
     int scadenza;
     int quantita;
-    int c;
 
     while(1) {
-        c = getchar();  
-        if (c == '\n' || c == EOF) break;
-        ungetc(c, stdin);
-        if(scanf("%s %d %d", v, &quantita, &scadenza) == 0) printf("ERROR");
+        // c = getchar();  
+        // ungetc(c, stdin);
+        if(scanf("%s %i %i%c", v, &quantita, &scadenza, &c) == 0) printf("ERROR");
         aggiungi_lotto(v, quantita, scadenza);
+        if (c == '\n' || c == EOF) break;
     }
 
     printf("rifornito\n");
+    // TODO: Aggiungi rifornimento
 }
 
 void corriere() {
@@ -399,7 +526,7 @@ int main(int argc, char *argv[]) {
     tab_ricette = crea_tabella_ricette();
     tab_inventario = crea_tabella_inventario();
     
-    if(scanf("%d %d", &t_corriere, &c_corriere) == 0) {
+    if(scanf("%i %i", &t_corriere, &c_corriere) == 0) {
         printf("ERROR: scanf - 1");
     };
     
@@ -417,7 +544,7 @@ int main(int argc, char *argv[]) {
         else if (action == 3) {
             rifornimento();
         } else if (action == 4) {
-            if (scanf("%s %d", v, &util) == 0) printf("ERROR: scanf - 2") ;
+            if (scanf("%s %i", v, &util) == 0) printf("ERROR: scanf - 2") ;
             ordine(v, util);
         }
 
@@ -425,7 +552,6 @@ int main(int argc, char *argv[]) {
         read = scanf("%s", v);
     }
 
-    print_inventario(tab_inventario);
-    print_tabella_ricette(tab_ricette);
+
     return 0;
 };
