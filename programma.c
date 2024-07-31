@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define DIM_CHAR 256
 #define HASH_TABLE 1000
+#define MIN_HEAP 100
+#define GROW_FACTOR
 
 #define CMD_AGGIUNGI_RICETTA "aggiungi_ricetta"
 #define CMD_RIMUOVI_RICETTA "rimuovi_ricetta"
@@ -54,11 +57,11 @@ typedef struct {
 typedef struct lotto_s {
     int quantita;
     int scadenza;
-    struct lotto_s *next;
-    struct lotto_s *prec;
 } lotto;
 typedef struct scorta_s {
     char nome[DIM_CHAR];
+    int count;
+    int dim;
     lotto *lotto;
 } scorta;
 typedef struct {
@@ -100,23 +103,39 @@ inventario * tab_inventario = NULL;
 //     }
 // }
 
-// void print_lotto(lotto *l) {
-//     int i = 1;
-//     while (l != NULL) {
-//         printf("  Lotto %d: Quantita: %d, Scadenza: %d\n", i++, l->quantita, l->scadenza);
-//         l = l->next;
-//     }
-// }
-
 // void print_scorta(scorta *s) {
-//     if (s != NULL) {
-//         printf("Scorta: %s\n", s->nome);
-//         if (s->lotto != NULL) {
-//             print_lotto(s->lotto);
-//         } else {
-//             printf("  No lotto\n");
-//         }
+//     if (s == NULL || s->count == 0) {
+//         printf("Scorta vuota.\n");
+//         return;
 //     }
+
+//     printf("Scorta: %s\n", s->nome);
+//     printf("Numero di lotti: %d\n", s->count);
+//     printf("Capacità: %d\n", s->dim);
+//     printf("Lotti (scadenza, quantità):\n");
+
+//     // Stampa l'heap come un albero
+//     int livello = 0;
+//     int lotti_nel_livello = 1;
+//     int lotti_stampati = 0;
+
+//     for (int i = 0; i < s->count; i++) {
+//         if (lotti_stampati == lotti_nel_livello) {
+//             printf("\n");
+//             livello++;
+//             lotti_nel_livello *= 2;
+//             lotti_stampati = 0;
+//         }
+
+//         // Stampa spazi per l'indentazione
+//         for (int j = 0; j < (1 << ((int)(log2(s->count) - livello))) - 1; j++) {
+//             printf("  ");
+//         }
+
+//         printf("(%d, %d) ", s->lotto[i].scadenza, s->lotto[i].quantita);
+//         lotti_stampati++;
+//     }
+//     printf("\n\n");
 // }
 
 // void print_inventario(inventario *inv) {
@@ -136,7 +155,7 @@ inventario *crea_tabella_inventario() {
     return tab;
 }
 
-// inserisce una nuova entry nella tabella hash
+// inserisce una nuova entry nella tabella hash e prealloca
 scorta * inserisci_inventario(char * key){
     int index = hash(key);
     scorta* el= tab_inventario->el[index];
@@ -148,9 +167,31 @@ scorta * inserisci_inventario(char * key){
     }
     el = malloc(sizeof(scorta));
     strcpy(el->nome, key);
-    el->lotto = NULL;
+    el->count = 0;
+    el->dim = MIN_HEAP;
+    el->lotto = (lotto *) malloc(MIN_HEAP * sizeof(lotto));
     tab_inventario->el[index] = el;
     return el;
+}
+
+void scambia_lotti(lotto * a, lotto * b) {
+    lotto tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
+void handle_heap(scorta * s, int i) {
+    int min = i;
+    int sx = 2*i + 1;
+    int dx = 2*i;
+
+    if (sx < s->count && s->lotto[sx].scadenza < s->lotto[min].scadenza) min = sx;
+
+    if(dx < s->count && s->lotto[dx].scadenza < s->lotto[min].scadenza) min = dx;
+    if (min != i) {
+        scambia_lotti(&s->lotto[i], &s->lotto[min]);
+        handle_heap(s, min);
+    }
 }
 
 // cerca una specifica chiave nella tabella hash
@@ -170,49 +211,29 @@ scorta * cerca_scorta(char * key){
 }
 
 // inserisce un rifornimento in ordine di scadenza
-lotto * aggiungi_lotto(char *key, int quantita, int scadenza) {
-
+void aggiungi_lotto(char *key, int quantita, int scadenza) {
     scorta *el = cerca_scorta(key);
     if (el == NULL) {
         el = inserisci_inventario(key);
     }
     
-    lotto *h = el->lotto;
-    lotto *new, *curr;
-    if ((new = (lotto *) malloc(sizeof(lotto))) != NULL)  {
-        new->quantita = quantita;
-        new->scadenza = scadenza;
-        new->prec = NULL;
-        new->next = NULL;
-        if (h == NULL) {
-            h = new;
-        } else {
-            curr = h;
-            while(curr->next != NULL && curr->scadenza < scadenza) {
-                curr = curr->next;
-            }
-            if (curr->scadenza == scadenza) {
-                curr->quantita = curr->quantita + quantita;
-                free(new);
-            } else if (curr->scadenza > scadenza) {
-                new->next = curr;
-                new->prec = curr->prec;
-                if (curr->prec != NULL) {
-                    curr->prec->next = new;
-                } else {
-                    h = new;
-                }
-                curr->prec = new;
-            } else {
-                curr->next = new;
-                new->prec = curr;
-            }
-        }
-        el->lotto = h;
-    } else {
-        printf("push: errore allocazione memoria");
+    if (el->count == el->dim) {
+        int dim = 2 * (el->dim);
+        lotto * new = realloc(el->lotto, sizeof(lotto) * dim);
+        el->lotto = new;
+        el->dim = dim;
     }
-    return h;
+
+    int i = el->count;
+    el->lotto[i].quantita = quantita;
+    el->lotto[i].scadenza = scadenza;
+
+    while(i != 0 && el->lotto[(i-1)/2].scadenza > el->lotto[i].scadenza) {
+        scambia_lotti(&el->lotto[i], &el->lotto[(i-1)/2]);
+        i = (i-1)/2;
+    }
+
+    el->count++;
 }
 // funzione per inizializzare la tabella hash
 tabella_ricette *crea_tabella_ricette() {
@@ -236,6 +257,55 @@ void inserisci_ricetta(char * key, ingrediente * ingredienti, int peso) {
     el->ingredienti = ingredienti;
     el->peso = peso;
     tab_ricette->el[index] = el;
+}
+
+lotto get_min(scorta* el) {
+    if (el->count <= 0) return 0;
+    else  {
+        return el->lotto[0];
+    }
+}
+
+void remove_min_lotto(scorta * el) {
+    if(el->count <= 0) return;
+
+    if(el->count == 1) {
+        el->count--;
+        return;
+    }
+    
+    el->lotto[0] = el->lotto[el->count -1];
+    el->count--;
+    handle_heap(el, 0);
+}
+
+void clean_scaduti(scorta *el) {
+    while(el->count > 0 && el->lotto[0].scadenza <= time) {
+        remove_min_lotto(el);
+    }
+}
+
+int verifica_lotti(scorta *s, int q) {
+    int count = 0;
+    for (i=0; i< s->count; i++) {
+        count += s->lotto[i]->quantita;
+    }
+    if (count < q) return 0;
+    return 1;
+}
+
+void consuma_lotti(scorta *s, int q) {
+    int k = q;
+    while(k>0) {
+        lotto tmp = get_min(s);
+        if (tmp.quantita < k) {
+            k -= tmp.quantita;
+            remove_min_lotto(s);
+        } else {
+            tmp.quantita -= k;
+            k = 0;
+        }
+    }
 }
 
 // aggiungi ingrediente ad una lista
@@ -305,82 +375,6 @@ list * find(list * h, char nome[]) {
         tmp = tmp->next;
     }
     return NULL;
-}
-
-// lotto * clean_lotto(lotto * h) {
-//     lotto * tmp;
-//     if (h == NULL) return h;
-    
-//     while(h->next != NULL && h->scadenza <= time) { 
-//         tmp = h;
-//         h = h->next;
-//         free(tmp);
-//     }
-
-//     if (h->next == NULL && h->scadenza <= time) {
-//         free(h);
-//         return NULL;
-//     }
-//     return h;
-// }
-
-int verifica_magazzino(char * key, int num) {
-    ingrediente * tmp;
-    scorta * el;
-    lotto * info;
-    ricetta * ricetta = cerca_ricetta(key);
-    int count;
-    
-    if (ricetta == NULL) return -1; // Non c'è la ricetta
-
-    tmp = ricetta->ingredienti;
-    while(tmp != NULL) {
-        el = cerca_scorta(tmp->nome);
-        if (el == NULL || el->lotto == NULL) return 0; // Non c'è l'ingrediente, metti in coda
-        count = 0;
-        info = el->lotto;
-        while(info != NULL && count < (tmp->quantita * num)) {
-            count += info->quantita;
-            info = info->next;
-        }
-
-        if (count < (tmp->quantita * num)) return 1;
-        tmp = tmp->next;
-    }
-
-    return ricetta->peso; // ci sono abbastanza ingredienti
-}
-
-void processa_ordine(char * key, int num) {
-    ingrediente * tmp;
-    scorta * el;
-    lotto * info;
-    ricetta * ricetta = cerca_ricetta(key);
-    int count, richiesti;
-    
-    if (ricetta == NULL) {
-        printf("THERE WAS AN ERROR");
-        return;
-    }
-
-    tmp = ricetta->ingredienti;
-    while(tmp != NULL) {
-        el = cerca_scorta(tmp->nome);
-        count = 0;
-        info = el->lotto;
-        while(info != NULL && count < (tmp->quantita * num)) {
-            richiesti = (tmp->quantita * num) - count;
-            if (info->quantita <=  richiesti) {
-                count += info->quantita;
-                el->lotto = info->next;
-                free(info);
-                info = el->lotto;
-            } else {
-                info->quantita = (info->quantita * num) - count;
-            }
-        }
-        tmp = tmp->next;
-    }
 }
 
 // Rimuovi una ricetta dalla tabella hash => per evitare collisioni viene sovrascritta e liberato spazio
@@ -470,7 +464,7 @@ void ordine(char * dolce, int quantita) {
             RIFIUTATO (se non c'è nella lista delle ricette)
     */
     // int result;
-    verifica_magazzino(dolce, quantita);
+    // verifica_magazzino(dolce, quantita);
     // if (result == -1) {
     //     printf("rifiutato\n");
     //     return;
@@ -551,7 +545,6 @@ int main(int argc, char *argv[]) {
         time++;
         read = scanf("%s", v);
     }
-
 
     return 0;
 };
