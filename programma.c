@@ -86,6 +86,7 @@ void remove_min_corriere_out(coda_corriere * );
 void inserisci_corriere(char * , int , int , int );
 void inserisci_corriere_out(char * , int , int , int );
 void crea_coda_corriere();
+void print_corr(coda_corriere *); 
 ingrediente * push_ingrediente(ingrediente * , char * , int );
 ricetta * cerca_ricetta(char *);
 scorta * cerca_scorta(char *);
@@ -108,7 +109,7 @@ void print_scorta(scorta *s) {
         return;
     }
 
-    printf("Scorta: %s al %i\n", s->nome, time);
+    // printf("Scorta: %s al %i\n", s->nome, time);
     printf("Numero di lotti: %d\n", s->count);
     printf("Capacità: %d\n", s->dim);
     printf("Lotti (scadenza, quantità):\n");
@@ -138,12 +139,16 @@ void print_scorta(scorta *s) {
 }
 
 void print_inventario() {
+    printf("THIS IS INVENTARIOTHIS IS INVENTARIOTHIS IS INVENTARIOTHIS IS INVENTARIO\n\n\n\n");
     for (int i = 0; i < HASH_TABLE; i++) {
         if (magazzino[i] != NULL) {
-            printf("Scorta %d:\n", i + 1);
+            printf("Scorta %s %d:\n",magazzino[i]->nome, i + 1);
             print_scorta(magazzino[i]);
         }
     }
+    printf("________________________________________________________________________\n\n");
+    print_corr(coda_corr);
+    printf("THIS IS INVENTARIOTHIS IS INVENTARIOTHIS IS INVENTARIOTHIS IS INVENTARIO\n\n\n\n");
 }
 
 void print_corr(coda_corriere *s) {
@@ -154,7 +159,7 @@ void print_corr(coda_corriere *s) {
 
     printf("Numero di ordini: %d al %i\n", s->count, time);
     printf("Capacità: %d\n", s->dim);
-    printf("Ordini (ora, quantità):\n");
+    printf("Ordini (ora, peso):\n");
 
     // Stampa l'heap come un albero
     int livello = 0;
@@ -174,7 +179,7 @@ void print_corr(coda_corriere *s) {
             printf("   ");
         }
 
-        printf("(%d, %d) ", s->preparato[i].ora, s->preparato[i].quantita);
+        printf("(%d, %d) ", s->preparato[i].ora, s->preparato[i].peso);
         lotti_stampati++;
     }
     printf("\n\n");
@@ -244,7 +249,7 @@ void ordine(char * nome, int quantita_ordine) {
             coda_head = push_coda(coda_head, nome, quantita_ordine, (quantita_ordine * ricetta->peso), time);
         } else {
             processa_ordine(ricetta, quantita_ordine);
-            inserisci_corriere(nome, quantita_ordine, time, ricetta->peso);
+            inserisci_corriere(nome, quantita_ordine, time, (ricetta->peso * quantita_ordine));
         }
         printf("accettato\n");
     }
@@ -259,7 +264,6 @@ void rifornimento() {
     char c;
     int scadenza;
     int quantita;
-
     while(1) {
         if(scanf("%s %i %i%c", v, &quantita, &scadenza, &c) == 0) printf("ERROR");
         inserisci_lotto(v, quantita, scadenza);
@@ -267,7 +271,13 @@ void rifornimento() {
     }
 
     printf("rifornito\n");
+    // printf("PRE      PRE      PRE     PRE    PRE      PRE      PRE     PRE    PRE      PRE      PRE     PRE    PRE      PRE      PRE     PRE    \n");
+    // print_inventario(magazzino);
+    // printf("PRE      PRE      PRE     PRE    PRE      PRE      PRE     PRE    PRE      PRE      PRE     PRE    PRE      PRE      PRE     PRE    \n");
     refresh();
+    // printf("POST     POST        POST        POST        POST        POST    POST     POST        POST        POST        POST        POSTPOST     POST        POST        POST        POST        POST\n");
+    // print_inventario(magazzino);
+    // printf("POST     POST        POST        POST        POST        POST    POST     POST        POST        POST        POST        POSTPOST     POST        POST        POST        POST        POST\n");
 }
 
 /* 
@@ -285,10 +295,15 @@ void corriere() {
         remove_min_corriere(coda_corr);
     }
 
-    while(coda_out->count > 0) {
-        printf("%i %s %i\n", coda_out->preparato[0].ora,coda_out->preparato[0].nome, coda_out->preparato[0].quantita);
-        remove_min_corriere_out(coda_out);
+    if (count == c_corriere) printf("camioncino vuoto\n");
+    else {
+        // print_corr(coda_out);
+        while(coda_out->count > 0) {
+            printf("%i %s %i\n", coda_out->preparato[0].ora,coda_out->preparato[0].nome, coda_out->preparato[0].quantita);
+            remove_min_corriere_out(coda_out);
+        }
     }
+
 }
 
 int main(int argc, char *argv[]) {
@@ -303,7 +318,6 @@ int main(int argc, char *argv[]) {
     
     read = scanf("%s", v);
     while(read && read != EOF) {
-        if (time % t_corriere == 0 && time != 0) corriere();
         action = isCommand(v);
         if (action == 1) {
             aggiungi_ricetta();
@@ -320,12 +334,12 @@ int main(int argc, char *argv[]) {
         }
 
         time++;
+        if (time % t_corriere == 0 && time != 0) corriere();
         read = scanf("%s", v);
     }
-    // print_inventario(magazzino);
-    // printf("__________________________________");
+    // printf("__________________________________\n");
     // while(coda_head != NULL) {
-    //     printf("%i %s %i\n", coda_head->ora, coda_head->nome, coda_head->quantita);
+    //     printf("%i %s %i %i\n", coda_head->ora, coda_head->nome, coda_head->quantita, coda_head->peso);
     //     coda_head = coda_head->next;
     // }
     return 0;
@@ -593,10 +607,10 @@ void remove_min_corriere(coda_corriere * s) {
 void remove_min_corriere_out(coda_corriere * s) {
     if(s->count <= 0) return;
 
-    if(s->count == 1) {
-        s->count--;
-        return;
-    }
+    // if(s->count == 1) {
+    //     s->count--;
+    //     return;
+    // }
     
     s->preparato[0] = s->preparato[s->count - 1];
     s->count--;
@@ -681,12 +695,13 @@ void consuma_scorta(char * nome, int totale) {
     if (scorta == NULL) printf("ERROR RICETTA CANCELLATA");
 
     int count = totale;
-    while (count != 0) {
+    while (count > 0) {
         if (scorta->lotto[0].quantita <= count) {
             count -= scorta->lotto[0].quantita;
             remove_min_lotto(scorta);
         } else {
             scorta->lotto[0].quantita -= count;
+            count = 0;
         }
     }
     if (count != 0) printf("ERROR CONUSMA SCORTA");
