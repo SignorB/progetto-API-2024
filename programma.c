@@ -1,11 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 #define DIM_CHAR 256
-#define HASH_TABLE 32768
-#define MIN_HEAP 100
+#define HASH_TABLE 65536
+#define MIN_HEAP 200
 #define MAX_HEAP 100
 #define GROW_FACTOR 2
 
@@ -145,7 +144,7 @@ void rimuovi_ricetta(char * nome_ricetta){
     int result = cancella_ricetta(nome_ricetta);
     if (result == -1) printf("non presente\n");
     else if(result == 0) printf("ordini in sospeso\n");
-    else printf("rimossa %s\n", nome_ricetta);
+    else printf("rimossa\n");
 }
 
 /* 
@@ -179,14 +178,22 @@ void rifornimento() {
     char c;
     int scadenza;
     int quantita;
+    // printf("PRIMA RIF====================================\n");
+    // print_inventario(magazzino);
+    // printf("^PRIMA RIF====================================\n");
     while(1) {
         if(scanf("%s %i %i%c", v, &quantita, &scadenza, &c) == 0) printf("ERROR");
         inserisci_lotto(v, quantita, scadenza);
         if (c == '\n' || c == EOF) break;
     }
-
     printf("rifornito\n");
+
+    // printf("DOPO RIF====================================\n");
+    // print_inventario(magazzino);
     refresh();
+
+    // printf("FINE REFRESH====================================\n");
+    // print_inventario(magazzino);
 }
 
 /* 
@@ -210,7 +217,6 @@ void corriere() {
             remove_min_corriere_out(coda_out);
         }
     }
-
 }
 
 int main(int argc, char *argv[]) {
@@ -295,6 +301,13 @@ int cancella_ricetta(char * key) {
     ricetta * tmp = ricettario[index];
     ricetta * prev = NULL;
 
+    // coda * k = coda_head;
+    // printf("IN CODA=============\n");
+    // while(k != NULL) {
+    //     printf("CODA %s q:%i p:%i ora:%i", k->nome, k->quantita, k->peso, k->ora);
+    //     k = k->next;
+    // }
+
     while (tmp != NULL && strcmp(tmp->nome, key) != 0) {
         prev = tmp;
         tmp = tmp->next;
@@ -303,6 +316,12 @@ int cancella_ricetta(char * key) {
     if (tmp == NULL) return -1;
 
     if (findin_list(coda_head, key)) return 0;
+
+    int i= 0;
+    while (i < coda_corr->count) {
+        if (strcmp(coda_corr->preparato[i].nome, key) == 0 ) return 0;
+        i++;
+    }
 
     clear_ingredienti(tmp->ingredienti);
 
@@ -596,6 +615,7 @@ void consuma_scorta(char * nome, int totale) {
     if (scorta == NULL) printf("ERROR RICETTA CANCELLATA");
 
     int count = totale;
+    // printf("\t\tCONSUMO %i di %s\n", count, nome);
     while (count > 0) {
         if (scorta->lotto[0].quantita <= count) {
             count -= scorta->lotto[0].quantita;
@@ -622,12 +642,13 @@ int verifica_magazzino(ricetta * ricetta, int quantita_ordine) {
 
 void processa_ordine(ricetta* ricetta, int quantita_ordine) {
     ingrediente * tmp;
-
+    
+    // printf("\tPROCESSO ORDINE => NOME: %s QUANTITA: %i\n", ricetta->nome, quantita_ordine);
     tmp = ricetta->ingredienti;
     while(tmp != NULL) {
         consuma_scorta(tmp->nome, (quantita_ordine * tmp->quantita));
         tmp = tmp->next;
-    }
+    }   
 }
 
 void refresh() {
@@ -635,6 +656,7 @@ void refresh() {
     while(list != NULL) {
         ricetta * ricetta = cerca_ricetta(list->nome);
         int result = verifica_magazzino(ricetta, list->quantita);
+        // printf("REFRESH %s  si può fare?%i\n", ricetta->nome, result);
         if (result != 0) {
             processa_ordine(ricetta, list->quantita);
             inserisci_corriere(list->nome, list->quantita, list->ora, list->peso);
