@@ -4,9 +4,10 @@
 
 #define DIM_CHAR 256
 #define HASH_TABLE 65536
-#define MIN_HEAP 100
-#define MAX_HEAP 100
-#define GROW_FACTOR 1.5
+#define MIN_HEAP 32
+#define MAX_HEAP 32
+#define A 10
+#define GROW_FACTOR 2
 
 #define CMD_AGGIUNGI_RICETTA "aggiungi_ricetta"
 #define CMD_RIMUOVI_RICETTA "rimuovi_ricetta"
@@ -24,8 +25,6 @@ typedef struct ricetta_s {
     char nome[DIM_CHAR];
     int peso;
     ingrediente *ingredienti;
-    struct ricetta_s *prec;
-    struct ricetta_s *next;
 } ricetta;
 
 typedef struct {
@@ -39,8 +38,6 @@ typedef struct scorta_s {
     int disponibile;
     int dim;
     lotto *lotto;
-    struct scorta_s *prec;
-    struct scorta_s *next;
 } scorta;
 
 typedef struct coda_s {
@@ -48,6 +45,7 @@ typedef struct coda_s {
     int quantita;
     int peso;
     int ora;
+    ingrediente *ingredienti;
     struct coda_s * next;
     struct coda_s * prec;
 } coda;
@@ -67,7 +65,7 @@ typedef struct {
 
 int isCommand(char *);
 int cancella_ricetta(char * );
-int verifica_magazzino(ricetta * , int );
+int verifica_magazzino(ingrediente * , int );
 int verifica_scorta(char * , int );
 int findin_list(coda *, char *);
 unsigned int hash(const char *);
@@ -76,8 +74,8 @@ void inserisci_ricetta(char *, int , ingrediente * );
 void scambia_lotti(lotto * , lotto * ); 
 void scambia_corriere(preparato * , preparato * ); 
 void inserisci_lotto(char * , int , int );
-void consuma_scorta(char * nome, int totale);
-void processa_ordine(ricetta* ricetta, int quantita_ordine);
+void consuma_scorta(char * , int );
+void processa_ordine(ingrediente * , int );
 void refresh();
 void heapify_corriere(coda_corriere * , int );
 void heapify_corriere_out(coda_corriere * , int );
@@ -91,8 +89,7 @@ ingrediente * push_ingrediente(ingrediente * , char * , int );
 ricetta * cerca_ricetta(char *);
 scorta * cerca_scorta(char *);
 scorta * clean_scaduti(scorta *);
-coda * push_coda(coda * , char *, int , int , int );
-
+coda * push_coda(coda * , ingrediente *, char *, int , int , int );
 
 // VARIABILI GLOBALI
 int t_corriere, c_corriere, time = 0;
@@ -159,12 +156,12 @@ void ordine(char * nome, int quantita_ordine) {
     if (ricetta == NULL) {
         printf("rifiutato\n");
     } else {
-        int result = verifica_magazzino(ricetta, quantita_ordine);
+        int result = verifica_magazzino(ricetta->ingredienti, quantita_ordine);
 
         if (result == 0) {
-            coda_head = push_coda(coda_head, nome, quantita_ordine, (quantita_ordine * ricetta->peso), time);
+            coda_head = push_coda(coda_head, ricetta->ingredienti, nome, quantita_ordine, (quantita_ordine * ricetta->peso), time);
         } else {
-            processa_ordine(ricetta, quantita_ordine);
+            processa_ordine(ricetta->ingredienti, quantita_ordine);
             inserisci_corriere(nome, quantita_ordine, time, (ricetta->peso * quantita_ordine));
         }
         printf("accettato\n");
@@ -265,66 +262,44 @@ unsigned int hash(const char* str) {
 
 ricetta * cerca_ricetta(char * key) {
     int index = hash(key);
-    ricetta * tmp;
+    int i = 1;
+    if (ricettario[index] == NULL) return NULL;
 
-    tmp = ricettario[index];
-    if (tmp == NULL) return NULL;
-
-    while(tmp != NULL) {
-        if (strcmp(key, tmp->nome) == 0) return tmp;
-        tmp = tmp->next;
+    while(ricettario[index] != NULL) {
+        if (strcmp(key, ricettario[index]->nome) == 0) return ricettario[index];
+        index = (index + A * i) % HASH_TABLE;
+        i++;
     }
     return NULL;
 }
 scorta * cerca_scorta(char * key) {
     int index = hash(key);
-    scorta * tmp;
-
-    tmp = magazzino[index];
-    if (tmp == NULL) return NULL;
-
-    while(tmp != NULL) {
-        if (strcmp(key, tmp->nome) == 0) return tmp;
-        tmp = tmp->next;
+    if (magazzino[index] == NULL) return NULL;
+    int i = 1;
+    while(magazzino[index] != NULL) {
+        if (strcmp(key, magazzino[index]->nome) == 0) return magazzino[index];
+        index = (index + A* i )% HASH_TABLE;
+        i++;
     }
     return NULL;
 }
 
 int cancella_ricetta(char * key) {
-    int index = hash(key);
-    ricetta * tmp = ricettario[index];
-    ricetta * prev = NULL;
+    ricetta * ricetta = cerca_ricetta(key);
 
-    while (tmp != NULL && strcmp(tmp->nome, key) != 0) {
-        prev = tmp;
-        tmp = tmp->next;
-    }
-
-    if (tmp == NULL) return -1;
+    if (ricetta == NULL) return -1;
 
     if (findin_list(coda_head, key)) return 0;
 
-    int i= 0;
+    int i = 0;
     while (i < coda_corr->count) {
         if (strcmp(coda_corr->preparato[i].nome, key) == 0 ) return 0;
         i++;
     }
 
-    clear_ingredienti(tmp->ingredienti);
+    clear_ingredienti(ricetta->ingredienti);
 
-    if (prev == NULL) {
-        ricettario[index] = tmp->next;
-        if (tmp->next != NULL) {
-            tmp->next->prec = NULL;
-        }
-    } else {
-        prev->next = tmp->next;
-        if (tmp->next != NULL) {
-            tmp->next->prec = prev;
-        }
-    }
-
-    free(tmp);
+    strcpy(ricetta->nome, "|DELETED|");
     return 1;
 }
 
@@ -335,19 +310,16 @@ void inserisci_ricetta(char *key, int peso, ingrediente * ing) {
     strcpy(new->nome, key);
     new->peso = peso;
     new->ingredienti = ing;
-    new->next = NULL;
-    new->prec = NULL;
     
     if (ricettario[index] == NULL) {
         ricettario[index] = new;
     } else {
-        ricetta *tmp;
-        tmp = ricettario[index];
-        while (tmp->next != NULL) {
-            tmp = tmp->next;
+        int i = 1;
+        while (ricettario[index] != NULL) {
+            index = (index + A * i) % HASH_TABLE;
+            i++;
         }
-        tmp->next = new;
-        new->prec = tmp;
+        ricettario[index] = new;
     }
 }
 
@@ -360,19 +332,17 @@ scorta * inserisci_scorta(char *key) {
     new->dim = MIN_HEAP;
     new->lotto = (lotto *) malloc(sizeof(lotto) * MIN_HEAP);
     new->disponibile = 0;
-    new->next = NULL;
-    new->prec = NULL;
     
     if (magazzino[index] == NULL) {
         magazzino[index] = new;
     } else {
-        scorta *tmp;
-        tmp = magazzino[index];
-        while (tmp->next != NULL) {
-            tmp = tmp->next;
+        int i = 1;
+        while (magazzino[index] != NULL) {
+            index = (index + A * i) % HASH_TABLE;
+            i++;
         }
-        tmp->next = new;
-        new->prec = tmp;
+        magazzino[index] = new;
+        
     }
     return new;
 }
@@ -554,7 +524,7 @@ ingrediente * push_ingrediente(ingrediente * h, char * nome, int quantita) {
     return new; 
 }
 
-coda * push_coda(coda * h, char *nome, int quantita, int peso, int t) {
+coda * push_coda(coda * h, ingrediente * ing, char *nome, int quantita, int peso, int t) {
     coda * new = NULL;
 
     if ((new = (coda *) malloc(sizeof(coda))) != NULL) {
@@ -563,6 +533,7 @@ coda * push_coda(coda * h, char *nome, int quantita, int peso, int t) {
         new->peso = peso;
         new->next = h;
         new->ora = t;
+        new->ingredienti = ing;
         new->prec = NULL;
 
         if (h == NULL) coda_bott = new;
@@ -621,35 +592,29 @@ void consuma_scorta(char * nome, int totale) {
     if (count != 0) printf("ERROR CONUSMA SCORTA");
 }
 
-int verifica_magazzino(ricetta * ricetta, int quantita_ordine) {
-    ingrediente * tmp;
+int verifica_magazzino(ingrediente * ing, int quantita_ordine) {
     int result = 1;
 
-    tmp = ricetta->ingredienti;
-    while(tmp != NULL && result) {
-        result = verifica_scorta(tmp->nome, (quantita_ordine * tmp->quantita));
-        tmp = tmp->next;
+    while(ing != NULL && result) {
+        result = verifica_scorta(ing->nome, (quantita_ordine * ing->quantita));
+        ing = ing->next;
     }
     return result;
 }
 
-void processa_ordine(ricetta* ricetta, int quantita_ordine) {
-    ingrediente * tmp;
-    
-    tmp = ricetta->ingredienti;
-    while(tmp != NULL) {
-        consuma_scorta(tmp->nome, (quantita_ordine * tmp->quantita));
-        tmp = tmp->next;
+void processa_ordine(ingrediente * ing, int quantita_ordine) {
+    while(ing != NULL) {
+        consuma_scorta(ing->nome, (quantita_ordine * ing->quantita));
+        ing = ing->next;
     }   
 }
 
 void refresh() {
     coda * list = coda_bott, *tmp;
     while(list != NULL) {
-        ricetta * ricetta = cerca_ricetta(list->nome);
-        int result = verifica_magazzino(ricetta, list->quantita);
+        int result = verifica_magazzino(list->ingredienti, list->quantita);
         if (result != 0) {
-            processa_ordine(ricetta, list->quantita);
+            processa_ordine(list->ingredienti, list->quantita);
             inserisci_corriere(list->nome, list->quantita, list->ora, list->peso);
 
             tmp = list;
