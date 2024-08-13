@@ -3,11 +3,8 @@
 #include <string.h>
 
 #define DIM_CHAR 256
-#define HASH_RICETTE 65536
-#define HASH_MAGAZZINO 65536
-#define A 14
-#define B 3
-#define M 69067
+#define HASH_RICETTE 1024
+#define HASH_MAGAZZINO 1024
 
 #define CMD_AGGIUNGI_RICETTA "aggiungi_ricetta"
 #define CMD_RIMUOVI_RICETTA "rimuovi_ricetta"
@@ -18,7 +15,6 @@ typedef struct lotto_s {
     int quantita;
     int scadenza;
     struct lotto_s * next;
-    struct lotto_s * prec;
 } lotto;
 
 typedef struct scorta_s {
@@ -26,7 +22,6 @@ typedef struct scorta_s {
     int disponibile;
     lotto *lotto;
     struct scorta_s * next;
-    struct scorta_s * prec;
 } scorta;
 
 typedef struct ingrediente_s {
@@ -40,7 +35,6 @@ typedef struct ricetta_s {
     int peso;
     ingrediente *ingredienti;
     struct ricetta_s * next;
-    struct ricetta_s * prec;
 } ricetta;
 
 typedef struct coda_s {
@@ -57,7 +51,6 @@ int cancella_ricetta(char * );
 int verifica_magazzino(ingrediente * , int );
 int verifica_scorta(scorta * , int );
 int findin_list(coda *, char *);
-int padding (int, int);
 unsigned int hash(const char *, int);
 void clear_ingredienti(ingrediente *);
 void inserisci_ricetta(char *, int , ingrediente * );
@@ -250,25 +243,30 @@ unsigned int hash(const char* str, int h) {
 ricetta * cerca_ricetta(char * key) {
     int index = hash(key, HASH_RICETTE);
     if (ricettario[index] == NULL) return NULL;
-
-    while(ricettario[index] != NULL) {
-        if (strcmp(key, ricettario[index]->nome) == 0) return ricettario[index];
-        index = padding(index, HASH_RICETTE);
+    
+    ricetta * tmp;
+    tmp = ricettario[index];
+    while(tmp != NULL) {
+        if (strcmp(key, tmp->nome) == 0) return tmp;
+        tmp = tmp->next;
     }
     return NULL;
 }
 scorta * cerca_scorta(char * key) {
     int index = hash(key, HASH_MAGAZZINO);
     if (magazzino[index] == NULL) return NULL;
-    while(magazzino[index] != NULL) {
-        if (strcmp(key, magazzino[index]->nome) == 0) return magazzino[index];
-        index = padding(index, HASH_MAGAZZINO);
+
+    scorta * tmp;
+    tmp = magazzino[index];
+    while(tmp != NULL) {
+        if (strcmp(key, tmp->nome) == 0) return tmp;
+        tmp = tmp->next;
     }
     return NULL;
 }
 
 int cancella_ricetta(char * key) {
-    ricetta * ricetta = cerca_ricetta(key);
+    ricetta * ricetta = cerca_ricetta(key), *point;
     coda * tmp;
 
     if (ricetta == NULL) return -1;
@@ -282,8 +280,23 @@ int cancella_ricetta(char * key) {
     }
 
     clear_ingredienti(ricetta->ingredienti);
+    
+    int index = hash(key, HASH_MAGAZZINO);
+    if (ricetta->next == NULL && ricettario[index] == ricetta) {
+        ricettario[index] = NULL;
+        free(ricetta);
+    } else if (ricettario[index] == ricetta){
+        ricettario[index] = ricetta->next;
+        free(ricetta);
+    } else  {
+        point = ricettario[index];
+        while(point->next != ricetta) {
+            point = point->next;
+        }
+        point->next = ricetta->next;
+        free(ricetta);
+    }
 
-    strcpy(ricetta->nome, "|DELETED|");
     return 1;
 }
 
@@ -294,13 +307,12 @@ void inserisci_ricetta(char *key, int peso, ingrediente * ing) {
     strcpy(new->nome, key);
     new->peso = peso;
     new->ingredienti = ing;
-    
+
     if (ricettario[index] == NULL) {
+        new->next = NULL;
         ricettario[index] = new;
     } else {
-        while (ricettario[index] != NULL) {
-            index = padding(index, HASH_RICETTE);
-        }
+        new->next = ricettario[index];
         ricettario[index] = new;
     }
 }
@@ -313,13 +325,11 @@ scorta * inserisci_scorta(char *key) {
     new->disponibile = 0;
     
     if (magazzino[index] == NULL) {
+        new->next = NULL;
         magazzino[index] = new;
     } else {
-        while (magazzino[index] != NULL) {
-            index = padding(index, HASH_MAGAZZINO);
-        }
-        magazzino[index] = new;
-        
+        new->next = magazzino[index];
+        magazzino[index] = new;        
     }
     return new;
 }
@@ -332,7 +342,6 @@ void inserisci_lotto(char * key, int quantita, int scadenza) {
 
     if ((new = (lotto *) malloc(sizeof(lotto))) != NULL) {
         new->next = NULL;
-        new->prec= NULL;
         new->quantita = quantita;
         new->scadenza = scadenza;
         scorta->disponibile += quantita;
@@ -340,7 +349,6 @@ void inserisci_lotto(char * key, int quantita, int scadenza) {
             scorta->lotto = new;
         } else if (scadenza < scorta->lotto->scadenza) {
             new->next = scorta->lotto;
-            scorta->lotto->prec = new;
             scorta->lotto = new;
         } else {
             tmp = scorta->lotto;
@@ -348,10 +356,6 @@ void inserisci_lotto(char * key, int quantita, int scadenza) {
                 tmp = tmp->next;
             }
             new->next = tmp->next;
-            new->prec = tmp;
-            if (tmp->next != NULL) {
-                tmp->next->prec = new;
-            }
             tmp->next = new;
         }
     }
@@ -462,9 +466,6 @@ scorta * clean_scaduti(scorta *s) {
         s->disponibile -= s->lotto->quantita;
         tmp = s->lotto;
         s->lotto = s->lotto->next;
-        if (s->lotto != NULL) {
-            s->lotto->prec = NULL;
-        }
         free(tmp);
     }
     return s;
@@ -487,9 +488,6 @@ void consuma_scorta(scorta * scorta, int totale) {
             scorta->disponibile -= scorta->lotto->quantita;
             tmp = scorta->lotto;
             scorta->lotto = scorta->lotto->next;
-            if (scorta->lotto != NULL) {
-                scorta->lotto->prec = NULL;
-            }
             free(tmp);
         } else {
             scorta->lotto->quantita -= count;
@@ -552,8 +550,4 @@ int findin_list(coda * h, char * nome) {
         tmp = tmp->next;
     }
     return 0;
-}
-
-int padding(int index, int h) {
-    return ((A * index + B) % M) % h;
 }
